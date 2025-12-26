@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rifa Compartilhável</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root {
+            --bg-app: #f4f7f6;
+            --color-res: #ffeb3b;
+            --color-pago: #ff3d00;
+            --color-disp: #ffffff;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg-app); display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; }
+        
+        /* Dashboard */
+        .dashboard {
+            width: 100%; max-width: 500px; display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 10px; margin-bottom: 15px; background: #fff; padding: 15px;
+            border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); box-sizing: border-box;
+        }
+        .stat-card { text-align: center; }
+        .stat-value { font-size: 20px; font-weight: bold; }
+        .stat-label { font-size: 10px; text-transform: uppercase; color: #777; }
+        .val-pago { color: var(--color-pago); } .val-res { color: #d4af37; } .val-disp { color: #2e7d32; }
+
+        header { width: 100%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        #gear-btn { background: none; border: none; font-size: 22px; cursor: pointer; opacity: 0.6; }
+
+        /* Painel Admin */
+        #admin-panel {
+            display: none; background: #fff; padding: 20px; border-radius: 12px;
+            border: 2px solid #007bff;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 20px; width: 90%; max-width: 460px;
+        }
+        .control-group { margin: 12px 0; display: flex; flex-direction: column; gap: 5px; }
+        .control-group label { font-size: 13px; font-weight: 600; }
+        input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .share-alert { font-size: 12px; color: #d9534f; background: #f9e2e2; padding: 10px; border-radius: 5px; margin-bottom: 15px;}
+
+        /* Rifa */
+        #raffle-container {
+            position: relative; width: 100%; max-width: 500px; background: #fff; line-height: 0;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2); border-radius: 4px; overflow: hidden;
+        }
+        #bg-image { width: 100%; height: auto; display: block; min-height: 400px; background: #ddd;}
+
+        #grid-overlay {
+            position: absolute; top: 46%; left: 50%; transform: translateX(-50%); width: 83%; height: 42%;
+            display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: repeat(10, 1fr);
+            gap: 2px; box-sizing: border-box;
+        }
+        .cell {
+            background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(0,0,0,0.2);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 13px; cursor: pointer; user-select: none;
+        }
+        .cell.reserved { background: var(--color-res) !important; color: #000; }
+        .cell.paid { background: var(--color-pago) !important; color: #fff; }
+
+        #btn-capture {
+            position: fixed; bottom: 20px; width: 90%; max-width: 400px;
+            padding: 15px; border: none; border-radius: 30px; background: #25d366;
+            color: white; font-weight: bold; font-size: 16px; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.4); z-index: 100;
+        }
+        /* Botões Admin */
+        .admin-btns { display: flex; gap: 10px; margin-top: 20px;}
+        .btn-close { flex: 1; padding:10px; background:#666; color:white; border:none; border-radius:4px; cursor: pointer;}
+        .btn-share { flex: 2; padding:10px; background:#007bff; color:white; border:none; border-radius:4px; font-weight: bold; cursor: pointer;}
+    </style>
+</head>
+<body>
+
+    <header>
+        <div style="font-weight: bold; color: #333; font-size: 14px;">CONTROLE DE VENDAS</div>
+        <button id="gear-btn">⚙️</button>
+    </header>
+
+    <div class="dashboard">
+        <div class="stat-card"><span class="stat-value val-pago" id="count-paid">0</span><span class="stat-label">Vendidos</span></div>
+        <div class="stat-card"><span class="stat-value val-res" id="count-res">0</span><span class="stat-label">Reservas</span></div>
+        <div class="stat-card"><span class="stat-value val-disp" id="count-disp">100</span><span class="stat-label">Disponíveis</span></div>
+    </div>
+
+    <div id="admin-panel">
+        <h3 style="margin:0 0 10px 0">Painel do Criador</h3>
+        <div class="share-alert">⚠️ Para compartilhar o link, você <b>DEVE</b> usar uma imagem hospedada online (ex: Imgur, Postimages) e colar o link abaixo. Upload local não funciona para compartilhamento via link.</div>
+        <div class="control-group">
+            <label>Link Direto da Imagem Online:</label>
+            <input type="text" id="img-url" placeholder="https://i.imgur.com/exemplo.jpg">
+        </div>
+        <div class="control-group">
+            <label style="color:#999">Upload Local (Apenas para teste no seu PC):</label>
+            <input type="file" id="upload-local" accept="image/*">
+        </div>
+        <hr>
+        <div class="control-group"><label>Posição Vertical (%): <span id="val-top">46</span></label><input type="range" id="adj-top" min="0" max="100" value="46"></div>
+        <div class="control-group"><label>Largura (%): <span id="val-width">83</span></label><input type="range" id="adj-width" min="50" max="100" value="83"></div>
+        <div class="control-group"><label>Altura (%): <span id="val-height">42</span></label><input type="range" id="adj-height" min="10" max="90" value="42"></div>
+        
+        <div class="admin-btns">
+            <button class="btn-close" onclick="location.reload()">Fechar</button>
+            <button class="btn-share" id="btn-generate-link">🔗 Gerar Link para Usuário</button>
+        </div>
+    </div>
+
+    <div id="raffle-container">
+        <img id="bg-image" src="https://via.placeholder.com/500x750?text=Rifa+N%C3%A3o+Configurada" alt="Fundo">
+        <div id="grid-overlay"></div>
+    </div>
+
+    <div style="height: 90px;"></div>
+    <button id="btn-capture">📸 Capturar Tela e Enviar</button>
+
+    <script>
+        const PASS_ADMIN = "yw14ad8x";
+        const grid = document.getElementById('grid-overlay');
+        const bgImg = document.getElementById('bg-image');
+        const adminPanel = document.getElementById('admin-panel');
+        const gearBtn = document.getElementById('gear-btn');
+        
+        // Dashboard elements
+        const cPaid = document.getElementById('count-paid');
+        const cRes = document.getElementById('count-res');
+        const cDisp = document.getElementById('count-disp');
+
+        // Inputs
+        const adjTop = document.getElementById('adj-top');
+        const adjWidth = document.getElementById('adj-width');
+        const adjHeight = document.getElementById('adj-height');
+        const imgUrlInput = document.getElementById('img-url');
+
+        let isSharedMode = false;
+
+        // --- INICIALIZAÇÃO ---
+        window.onload = function() {
+            initGrid();
+            
+            // VERIFICA SE É UM LINK COMPARTILHADO
+            const urlParams = new URLSearchParams(window.location.search);
+            const configParam = urlParams.get('config');
+
+            if (configParam) {
+                // MODO USUÁRIO FINAL (Carrega do Link)
+                try {
+                    isSharedMode = true;
+                    gearBtn.style.display = 'none'; // Esconde a engrenagem
+                    const decoded = atob(configParam);
+                    const config = JSON.parse(decoded);
+                    
+                    if(config.img) bgImg.src = config.img;
+                    grid.style.top = config.top + '%';
+                    grid.style.width = config.width + '%';
+                    grid.style.height = config.height + '%';
+                    
+                    // Tenta carregar estados salvos localmente pelo usuário se houver
+                    loadLocalStates();
+                } catch (e) {
+                    alert("Erro ao carregar configuração do link. O link pode estar quebrado.");
+                    loadLocalData(); // Fallback
+                }
+            } else {
+                // MODO ADMIN NORMAL (Carrega do LocalStorage)
+                loadLocalData();
+            }
+            updateDashboard();
+        };
+
+
+        // --- FUNÇÕES PRINCIPAIS ---
+
+        function updateDashboard() {
+            const paid = document.querySelectorAll('.cell.paid').length;
+            const reserved = document.querySelectorAll('.cell.reserved').length;
+            cPaid.textContent = paid; cRes.textContent = reserved; cDisp.textContent = 100 - paid - reserved;
+        }
+
+        // Botão de Engrenagem
+        gearBtn.addEventListener('click', () => {
+            if (prompt("Senha de Criador:") === PASS_ADMIN) {
+                adminPanel.style.display = "block";
+                // Atualiza labels dos sliders
+                ['top', 'width', 'height'].forEach(p => document.getElementById('val-'+p).innerText = document.getElementById('adj-'+p).value);
+            }
+        });
+
+        // Botão Gerar Link (NOVO)
+        document.getElementById('btn-generate-link').addEventListener('click', () => {
+            if (!imgUrlInput.value.startsWith('http')) {
+                alert("ERRO: Para gerar um link, você PRECISA usar um link de imagem online no primeiro campo.");
+                return;
+            }
+            const config = {
+                img: imgUrlInput.value,
+                top: adjTop.value,
+                width: adjWidth.value,
+                height: adjHeight.value
+            };
+            // Codifica a configuração em Base64
+            const encoded = btoa(JSON.stringify(config));
+            // Cria a URL limpa (sem parâmetros anteriores) + o novo parâmetro
+            const shareUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?config=' + encoded;
+            
+            // Copia para a área de transferência (método moderno com fallback)
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(shareUrl).then(() => alert("Link copiado para a área de transferência! Envie este link para o usuário final."));
+            } else {
+                prompt("Copie este link para enviar ao usuário final:", shareUrl);
+            }
+        });
+
+        function initGrid() {
+            grid.innerHTML = "";
+            for (let i = 1; i <= 100; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.textContent = i === 100 ? '00' : String(i).padStart(2, '0');
+                cell.addEventListener('click', () => {
+                    if (cell.classList.contains('paid')) cell.classList.remove('paid', 'reserved');
+                    else if (cell.classList.contains('reserved')) { cell.classList.remove('reserved'); cell.classList.add('paid'); }
+                    else cell.classList.add('reserved');
+                    updateDashboard();
+                    if (!isSharedMode) saveAdminData(); // Admin salva tudo
+                    else saveLocalStates(); // Usuário só salva os cliques
+                });
+                grid.appendChild(cell);
+            }
+        }
+
+        // --- PERSISTÊNCIA LOCAL (LocalStorage) ---
+
+        // Salva configuração + estados (Modo Admin)
+        function saveAdminData() {
+            const states = getCellStates();
+            localStorage.setItem('rifa_admin_config', JSON.stringify({
+                top: adjTop.value, width: adjWidth.value, height: adjHeight.value,
+                imgSrc: bgImg.src, imgUrlVal: imgUrlInput.value, states: states
+            }));
+        }
+
+        // Carrega configuração + estados (Modo Admin)
+        function loadLocalData() {
+            const saved = localStorage.getItem('rifa_admin_config');
+            if (!saved) return;
+            const d = JSON.parse(saved);
+            adjTop.value = d.top; adjWidth.value = d.width; adjHeight.value = d.height;
+            imgUrlInput.value = d.imgUrlVal || ""; bgImg.src = d.imgSrc;
+            applyGridStyles(d.top, d.width, d.height);
+            applyCellStates(d.states);
+        }
+
+        // Salva APENAS os estados dos cliques (Modo Usuário Compartilhado)
+        function saveLocalStates() {
+            localStorage.setItem('rifa_user_states', JSON.stringify(getCellStates()));
+        }
+        // Carrega APENAS os estados dos cliques (Modo Usuário Compartilhado)
+        function loadLocalStates() {
+            const saved = localStorage.getItem('rifa_user_states');
+            if(saved) applyCellStates(JSON.parse(saved));
+        }
+
+        // Helpers
+        function getCellStates() {
+            return Array.from(document.querySelectorAll('.cell')).map(c => c.classList.contains('paid') ? 2 : (c.classList.contains('reserved') ? 1 : 0));
+        }
+        function applyCellStates(states) {
+            const cells = document.querySelectorAll('.cell');
+            states.forEach((s, i) => {
+                if(s === 1) cells[i].classList.add('reserved');
+                if(s === 2) cells[i].classList.add('paid');
+            });
+        }
+        function applyGridStyles(t, w, h) {
+            grid.style.top = t + '%'; grid.style.width = w + '%'; grid.style.height = h + '%';
+        }
+
+        // Listeners de interface
+        [adjTop, adjWidth, adjHeight].forEach(el => el.addEventListener('input', (e) => {
+            document.getElementById('val-'+e.target.id.replace('adj-','')).innerText = e.target.value;
+            applyGridStyles(adjTop.value, adjWidth.value, adjHeight.value);
+            saveAdminData();
+        }));
+
+        imgUrlInput.addEventListener('input', () => { if(imgUrlInput.value) { bgImg.src = imgUrlInput.value; saveAdminData(); } });
+        document.getElementById('upload-local').addEventListener('change', (e) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => { bgImg.src = ev.target.result; imgUrlInput.value = ""; saveAdminData(); };
+            reader.readAsDataURL(e.target.files[0]);
+        });
+
+        document.getElementById('btn-capture').addEventListener('click', () => {
+            const btn = document.getElementById('btn-capture'); btn.textContent = "Processando...";
+            html2canvas(document.getElementById('raffle-container'), { scale: 2, useCORS: true }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `rifa-status-${new Date().toLocaleTimeString().replace(/:/g,'-')}.png`;
+                link.href = canvas.toDataURL();
+                link.click();
+                btn.textContent = "📸 Capturar Tela e Enviar";
+            });
+        });
+    </script>
+</body>
+</html>
